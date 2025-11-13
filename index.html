@@ -37,7 +37,7 @@
         <h1>👋 Привет!</h1>
         <p>Придумай название комнаты:</p>
         <input type="text" id="room-input" placeholder="Например: Tusovka" onkeypress="handleEnter(event)">
-        <button onclick="enterRoom()">Создать / Войти</button>
+        <button onclick="enterRoom()">Создать</button>
     </div>
 
     <div id="meet"></div>
@@ -84,7 +84,7 @@
             document.getElementById('meet').style.display = 'block';
             // document.getElementById('leave-btn').style.display = 'block'; // Если нужна своя кнопка выхода
 
-            const domain = 'meet.jit.si';
+            const domain = 'meet.ffmuc.net';
             const options = {
                 roomName: roomName,
                 width: '100%',
