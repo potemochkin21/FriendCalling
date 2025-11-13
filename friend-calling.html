@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Моя Звонилка</title>
+    <script src='https://meet.jit.si/external_api.js'></script>
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: white; display: flex; flex-direction: column; height: 100vh; }
+        
+        /* Стили для "Прихожей" (Экран входа) */
+        #lobby {
+            display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center;
+        }
+        h1 { margin-bottom: 20px; font-size: 2.5rem; }
+        input {
+            padding: 15px; font-size: 18px; border-radius: 30px; border: none; outline: none; text-align: center; width: 80%; max-width: 300px; margin-bottom: 20px;
+        }
+        button {
+            padding: 15px 40px; font-size: 18px; border-radius: 30px; border: none; cursor: pointer; background: #007bff; color: white; font-weight: bold; transition: 0.3s;
+        }
+        button:hover { background: #0056b3; transform: scale(1.05); }
+
+        /* Стили для контейнера видео (скрыт по умолчанию) */
+        #meet { flex: 1; width: 100%; display: none; }
+        
+        /* Кнопка выхода */
+        #leave-btn {
+            display: none; position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: #dc3545; z-index: 999;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="lobby">
+        <h1>👋 Привет!</h1>
+        <p>Придумай название комнаты:</p>
+        <input type="text" id="room-input" placeholder="Например: Tusovka" onkeypress="handleEnter(event)">
+        <button onclick="enterRoom()">Создать / Войти</button>
+    </div>
+
+    <div id="meet"></div>
+    <button id="leave-btn" onclick="window.location.reload()">🔴 Выйти</button>
+
+    <script>
+        let api = null;
+
+        // 1. Проверяем, есть ли комната в ссылке (например, mysite.ru/?room=Party)
+        window.onload = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomFromUrl = urlParams.get('room');
+            
+            if (roomFromUrl) {
+                startCall(roomFromUrl);
+            }
+        }
+
+        // Обработка нажатия Enter в поле ввода
+        function handleEnter(e) {
+            if (e.key === "Enter") enterRoom();
+        }
+
+        // Логика кнопки "Войти"
+        function enterRoom() {
+            const inputVal = document.getElementById('room-input').value.trim();
+            if (!inputVal) return alert("Введите название комнаты!");
+            
+            // Добавляем случайный префикс, чтобы не пересечься с чужими людьми на сервере Jitsi
+            // Можно убрать 'MyPersonalSite_', если хотите простые названия
+            const fullRoomName = 'MyPersonalSite_' + inputVal; 
+            
+            // Обновляем URL браузера без перезагрузки (чтобы можно было скопировать)
+            const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?room=' + fullRoomName;
+            window.history.pushState({path: newUrl}, '', newUrl);
+
+            startCall(fullRoomName);
+        }
+
+        // Запуск Jitsi
+        function startCall(roomName) {
+            // Скрываем лобби, показываем видео
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('meet').style.display = 'block';
+            // document.getElementById('leave-btn').style.display = 'block'; // Если нужна своя кнопка выхода
+
+            const domain = 'meet.jit.si';
+            const options = {
+                roomName: roomName,
+                width: '100%',
+                height: '100%',
+                parentNode: document.querySelector('#meet'),
+                lang: 'ru',
+                configOverwrite: {
+                    startWithAudioMuted: false,
+                    prejoinPageEnabled: false // Заходить сразу
+                }
+            };
+
+            api = new JitsiMeetExternalAPI(domain, options);
+
+            // Если пользователь повесил трубку внутри интерфейса Jitsi
+            api.addEventListeners({
+                videoConferenceLeft: function () {
+                    window.location.href = window.location.pathname; // Перезагрузка на главную
+                }
+            });
+        }
+    </script>
+</body>
+</html>
