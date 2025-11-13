@@ -3,162 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>friend-calling</title>
-    <script src='https://meet.jit.si/external_api.js'></script>
-    
+    <title>Friend Calling</title>
     <style>
-        /* Основной стиль страницы */
-        body { margin: 0; font-family: 'Arial', sans-serif; background-color: #121212; color: white; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        body { margin: 0; font-family: sans-serif; background: #121212; color: white; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         
-        /* Стиль "Прихожей" */
-        #lobby { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; transition: opacity 0.5s; }
-        h1 { margin-bottom: 20px; font-size: 24px; }
-        input { padding: 15px; font-size: 18px; border-radius: 12px; border: 2px solid #333; text-align: center; width: 80%; max-width: 300px; margin-bottom: 20px; background: #222; color: white; outline: none; }
-        button.start-btn { padding: 15px 40px; font-size: 18px; border-radius: 30px; border: none; cursor: pointer; background: #007bff; color: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0,123,255,0.4); transition: 0.2s; }
-        button.start-btn:active { transform: scale(0.95); }
-
-        /* Место для видео */
-        #meet { flex: 1; width: 100%; display: none; }
-
-        /* --- ОКНО С ОШИБКОЙ (Скрыто по умолчанию) --- */
-        #error-modal {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 9999;
-            flex-direction: column; align-items: center; justify-content: center;
+        /* Экран входа (виден сразу) */
+        #login-screen { 
+            text-align: center; 
+            background: #1e1e1e; 
+            padding: 40px; 
+            border-radius: 20px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
-        .error-box {
-            background: #2c0b0e; border: 2px solid #ff4444; padding: 20px; border-radius: 15px;
-            width: 90%; max-width: 500px; text-align: left; box-shadow: 0 0 20px rgba(255,0,0,0.3);
-        }
-        .error-title { color: #ff4444; font-size: 20px; font-weight: bold; margin-bottom: 10px; }
-        .error-text { 
-            background: #000; color: #0f0; font-family: monospace; padding: 10px; 
-            border-radius: 5px; overflow-x: auto; font-size: 12px; margin-bottom: 15px; white-space: pre-wrap; 
-        }
-        .copy-btn { background: #444; color: white; border: 1px solid #666; padding: 8px 15px; cursor: pointer; border-radius: 5px; margin-right: 10px; }
-        .close-btn { background: transparent; color: #aaa; border: none; cursor: pointer; text-decoration: underline; }
+        
+        /* Экран звонка (скрыт) */
+        #app-screen { display: none; width: 100%; height: 100%; }
+        iframe { width: 100%; height: 100%; border: none; }
+        
+        h1 { margin-bottom: 10px; }
+        p { color: #888; margin-bottom: 30px; }
     </style>
 </head>
 <body>
 
-    <div id="error-modal">
-        <div class="error-box">
-            <div class="error-title">🚨 Произошла ошибка</div>
-            <p style="font-size: 14px; color: #ccc;">Сделайте скриншот или скопируйте код ошибки и отправьте разработчику:</p>
-            <div id="error-content" class="error-text">Загрузка...</div>
-            <div style="display: flex; align-items: center;">
-                <button class="copy-btn" onclick="copyError()">📋 Скопировать ошибку</button>
-                <button class="close-btn" onclick="document.getElementById('error-modal').style.display='none'">Закрыть</button>
-            </div>
+    <div id="login-screen">
+        <h1>🔒Closed</h1>
+        <p>Войдите через Telegram, чтобы продолжить</p>
+
+        <script async src="https://telegram.org/js/telegram-widget.js?22" 
+                data-telegram-login="FriendCalling_bot" 
+                data-size="large" 
+                data-radius="10" 
+                data-onauth="onTelegramAuth(user)" 
+                data-request-access="write"></script>
+    </div>
+
+    <div id="app-screen">
+        <iframe src="https://whereby.com/potemochkin-party?minimal=on" allow="camera; microphone; fullscreen; speaker"></iframe>
+        
+        <div style="position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.5); padding:5px 10px; border-radius:5px;">
+            👤 <span id="username-display">Гость</span>
         </div>
     </div>
 
-    <div id="lobby">
-        <h1>📞 Видеозвонок</h1>
-        <p style="color: #888; font-size: 14px;">Введите название комнаты:</p>
-        <input type="text" id="room-input" placeholder="Например: tusovka" onkeypress="handleEnter(event)">
-        <button class="start-btn" onclick="enterRoom()">Начать</button>
-    </div>
-
-    <div id="meet"></div>
-
     <script>
-        // --- СИСТЕМА ОТЛОВА ОШИБОК ---
-        function showError(title, details) {
-            const modal = document.getElementById('error-modal');
-            const content = document.getElementById('error-content');
-            // Формируем текст ошибки
-            const fullMessage = `TYPE: ${title}\nTIME: ${new Date().toLocaleTimeString()}\nDETAILS: ${details}\nURL: ${window.location.href}`;
-            content.innerText = fullMessage;
-            modal.style.display = 'flex'; // Показываем окно
-        }
-
-        // Ловим ошибки JS
-        window.onerror = function(message, source, lineno, colno, error) {
-            showError('Javascript Error', `${message}\nLine: ${lineno}\nSource: ${source}`);
-            return true; 
-        };
-
-        // Ловим ошибки "Обещаний" (когда сервер не ответил)
-        window.onunhandledrejection = function(event) {
-            showError('Promise Rejection', event.reason || event.message || "Unknown Network Error");
-        };
-        
-        function copyError() {
-            const text = document.getElementById('error-content').innerText;
-            navigator.clipboard.writeText(text).then(() => alert("Скопировано!"));
-        }
-        // -----------------------------
-
-
-        // --- НАСТРОЙКИ СЕРВЕРА ---
-        // 'meet.ffmuc.net' - Мюнхен (Стабильный, близко к РФ, без регистрации)
-        // Если он заблокируется, попробуйте 'meet.guifi.net'
-        const SERVER_DOMAIN = 'meet.ffmuc.net'; 
-
-
-        window.onload = () => {
-            try {
-                const urlParams = new URLSearchParams(window.location.search);
-                const roomFromUrl = urlParams.get('room');
-                if (roomFromUrl) startCall(roomFromUrl);
-            } catch (e) {
-                showError('Init Error', e.message);
-            }
-        }
-
-        function handleEnter(e) { if (e.key === "Enter") enterRoom(); }
-
-        function enterRoom() {
-            const inputVal = document.getElementById('room-input').value.trim();
-            if (!inputVal) return alert("Введите имя комнаты!");
+        // Эта функция запускается АВТОМАТИЧЕСКИ, когда Телеграм подтверждает вход
+        function onTelegramAuth(user) {
+            console.log("Пользователь авторизован:", user);
             
-            // Префикс для уникальности
-            const fullRoomName = 'MyCall_' + inputVal; 
+            // 1. Прячем экран входа
+            document.getElementById('login-screen').style.display = 'none';
             
-            // Меняем ссылку в браузере
-            const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?room=' + fullRoomName;
-            window.history.pushState({path: newUrl}, '', newUrl);
-
-            startCall(fullRoomName);
-        }
-
-        function startCall(roomName) {
-            // Проверяем, загрузился ли скрипт Jitsi вообще
-            if (typeof JitsiMeetExternalAPI === 'undefined') {
-                showError('Library Error', 'Скрипт Jitsi не загрузился. Проверьте интернет или VPN.');
-                return;
-            }
-
-            document.getElementById('lobby').style.display = 'none';
-            document.getElementById('meet').style.display = 'block';
-
-            const options = {
-                roomName: roomName,
-                width: '100%',
-                height: '100%',
-                parentNode: document.querySelector('#meet'),
-                lang: 'ru',
-                configOverwrite: {
-                    startWithAudioMuted: false,
-                    prejoinPageEnabled: false,
-                    // Отключаем лишние проверки P2P, которые могут тормозить в РФ
-                    p2p: { enabled: true }
-                }
-            };
-
-            try {
-                const api = new JitsiMeetExternalAPI(SERVER_DOMAIN, options);
-                
-                api.addEventListeners({
-                    videoConferenceLeft: function () { window.location.reload(); },
-                    // Если сам Jitsi выдаст фатальную ошибку
-                    fatalError: function(e) { showError('Jitsi Fatal', JSON.stringify(e)); }
-                });
-            } catch (e) {
-                showError('API Start Error', e.message);
-            }
+            // 2. Показываем экран звонка
+            document.getElementById('app-screen').style.display = 'block';
+            
+            // 3. Приветствуем пользователя
+            document.getElementById('username-display').innerText = user.first_name + " " + (user.last_name || "");
+            
+            // (Опционально) Сохраняем, что он вошел, чтобы при обновлении страницы не просило снова
+            // localStorage.setItem('tg_user', JSON.stringify(user));
         }
     </script>
+
 </body>
 </html>
