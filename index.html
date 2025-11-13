@@ -3,29 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Friend Calling</title>
+    <title>Secure Call</title>
     <script src='https://meet.jit.si/external_api.js'></script>
     <style>
-        body { margin: 0; font-family: sans-serif; background-color: #121212; color: white; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        
-        /* Центровка экранов */
-        .screen { display: none; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; }
+        body { margin: 0; font-family: sans-serif; background-color: #000; color: white; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+        /* Общие стили экранов */
+        .screen { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            display: none; /* Скрыто по умолчанию */
+            flex-direction: column; align-items: center; justify-content: center; 
+            background: #121212; z-index: 10;
+        }
+
+        /* Активный экран показываем */
         .active { display: flex; }
 
-        /* Стиль инпутов и кнопок */
+        /* Элементы интерфейса */
+        h1 { margin-bottom: 20px; text-align: center; }
         input { padding: 15px; font-size: 18px; border-radius: 12px; border: 2px solid #333; text-align: center; width: 80%; max-width: 300px; margin-bottom: 20px; background: #222; color: white; outline: none; }
-        button { padding: 15px 40px; font-size: 18px; border-radius: 30px; border: none; cursor: pointer; background: #007bff; color: white; font-weight: bold; transition: 0.3s; }
+        button { padding: 15px 40px; font-size: 18px; border-radius: 30px; border: none; cursor: pointer; background: #007bff; color: white; font-weight: bold; }
         button:hover { background: #0056b3; }
 
-        /* Контейнер видео */
-        #meet { flex: 1; width: 100%; height: 100%; background: black; }
+        /* Контейнер Jitsi */
+        #meet { width: 100%; height: 100%; background: #000; }
+
+        /* Плашка с ссылкой (поверх видео) */
+        #link-bar {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7); padding: 10px 20px; border-radius: 20px;
+            display: none; align-items: center; gap: 10px; z-index: 20; border: 1px solid #444;
+        }
+        .copy-btn { padding: 5px 15px; font-size: 14px; background: #28a745; }
     </style>
 </head>
 <body>
 
     <div id="login-screen" class="screen active">
-        <h1>🔒 Вход в систему</h1>
-        <p>Авторизуйся, чтобы начать звонок</p>
+        <h1>🔒Closed</h1>
+        <p style="color:#aaa; margin-bottom: 30px;">Войдите через Telegram, чтобы попасть в комнату</p>
         
         <script async src="https://telegram.org/js/telegram-widget.js?22" 
                 data-telegram-login="FriendCalling_bot" 
@@ -36,47 +52,90 @@
     </div>
 
     <div id="lobby-screen" class="screen">
-        <h1 id="welcome-msg">Привет!</h1>
-        <input type="text" id="room-input" placeholder="Придумай название комнаты" onkeypress="handleEnter(event)">
-        <button onclick="enterRoom()">📞 Позвонить</button>
+        <h1>👋 Привет, <span id="user-name">...</span></h1>
+        <p>Куда звоним?</p>
+        <input type="text" id="room-input" placeholder="Название комнаты" onkeypress="handleEnter(event)">
+        <button onclick="createRoom()">🚀Создать</button>
     </div>
 
-    <div id="call-screen" style="display:none; width: 100%; height: 100%;">
+    <div id="call-screen" class="screen" style="background: black;">
+        <div id="link-bar">
+            <span style="font-size: 14px;">🔗 Ссылка на эту комнату:</span>
+            <button class="copy-btn" onclick="copyLink()">Скопировать</button>
+        </div>
         <div id="meet"></div>
     </div>
 
     <script>
+        const SERVER = 'meet.ffmuc.net';
         let currentUser = null;
-        const JITSI_DOMAIN = 'meet.ffmuc.net'; // Твой сервер
+        let targetRoom = null; // Комната, куда хочет попасть человек
 
-        // 1. Функция, которую вызывает Телеграм при успешном входе
+        // --- 1. ПРОВЕРЯЕМ ССЫЛКУ ПРИ ЗАГРУЗКЕ ---
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomFromUrl = urlParams.get('room');
+            
+            if (roomFromUrl) {
+                targetRoom = roomFromUrl;
+                console.log("Человек пришел по ссылке в комнату:", targetRoom);
+            }
+        };
+
+        // --- 2. АВТОРИЗАЦИЯ (Срабатывает после нажатия кнопки ТГ) ---
         function onTelegramAuth(user) {
+            console.log("Авторизация успешна:", user);
             currentUser = user;
+
+            // Скрываем экран входа
             document.getElementById('login-screen').classList.remove('active');
-            document.getElementById('lobby-screen').classList.add('active');
-            document.getElementById('welcome-msg').innerText = `Привет, ${user.first_name}!`;
+
+            // ЛОГИКА РАЗВИЛКИ:
+            if (targetRoom) {
+                // Если человек пришел по ссылке -> Сразу в звонок
+                startJitsi(targetRoom);
+            } else {
+                // Если ссылки нет -> Даем создать комнату
+                document.getElementById('user-name').innerText = user.first_name;
+                document.getElementById('lobby-screen').classList.add('active');
+            }
         }
 
-        // Обработка Enter
-        function handleEnter(e) { if (e.key === "Enter") enterRoom(); }
+        // --- 3. СОЗДАНИЕ КОМНАТЫ (ХОСТ) ---
+        function handleEnter(e) { if (e.key === "Enter") createRoom(); }
 
-        // 2. Переход к звонку
-        function enterRoom() {
-            const roomName = document.getElementById('room-input').value.trim();
-            if (!roomName) return alert("Введите название комнаты!");
+        function createRoom() {
+            const inputVal = document.getElementById('room-input').value.trim();
+            if (!inputVal) return alert("Введите название!");
 
-            document.getElementById('lobby-screen').classList.remove('active');
-            document.getElementById('call-screen').style.display = 'block';
+            // Генерируем уникальное имя, чтобы не пересекаться с чужими
+            // Но делаем его читаемым, чтобы ссылка была красивой
+            const finalRoomName = 'MyCall_' + inputVal; 
 
-            // Запускаем Jitsi
+            // ОБНОВЛЯЕМ ССЫЛКУ В БРАУЗЕРЕ (Чтобы можно было скопировать)
+            const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?room=' + finalRoomName;
+            window.history.pushState({path: newUrl}, '', newUrl);
+
+            startJitsi(finalRoomName);
+        }
+
+        // --- 4. ЗАПУСК JITSI ---
+        function startJitsi(roomName) {
+            // Убираем все экраны, показываем звонок
+            document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+            document.getElementById('call-screen').classList.add('active');
+            
+            // Показываем кнопку копирования
+            document.getElementById('link-bar').style.display = 'flex';
+
             const options = {
-                roomName: 'MyFriendCall_' + roomName, // Уникальный префикс
+                roomName: roomName,
                 width: '100%',
                 height: '100%',
                 parentNode: document.querySelector('#meet'),
                 lang: 'ru',
                 userInfo: {
-                    displayName: currentUser ? currentUser.first_name : 'Гость'
+                    displayName: currentUser.first_name + " " + (currentUser.last_name || "")
                 },
                 configOverwrite: {
                     startWithAudioMuted: false,
@@ -84,10 +143,20 @@
                 }
             };
 
-            const api = new JitsiMeetExternalAPI(JITSI_DOMAIN, options);
-
+            const api = new JitsiMeetExternalAPI(SERVER, options);
+            
             api.addEventListeners({
-                videoConferenceLeft: function () { location.reload(); }
+                videoConferenceLeft: function () {
+                    window.location.href = window.location.pathname; // Полный выход на главную
+                }
+            });
+        }
+
+        // --- 5. КНОПКА "СКОПИРОВАТЬ" ---
+        function copyLink() {
+            const url = window.location.href;
+            navigator.clipboard.writeText(url).then(() => {
+                alert("Ссылка скопирована! Отправь её другу.");
             });
         }
     </script>
