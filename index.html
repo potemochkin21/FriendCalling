@@ -213,5 +213,18 @@
             });
         }
     </script>
+       <script src="https://friend-calling-bot.unclejoerus.workers.dev/chat.js" data-room="2fbfbr1"></script>
+    
+    <script>
+       // Когда Google залогинился, передаем имя в виджет чата
+       function onGoogleLogin(response) {
+           const idToken = response.credential;
+           const payload = parseJwt(idToken);
+           handleAuthSuccess(payload); // Ваша старая функция
+           
+           // Добавляем эту строчку:
+           window.CHAT_USER_NAME = payload.name; 
+       }
+    </script>
 </body>
 </html>
