@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure Call</title>
@@ -38,6 +39,17 @@
     </style>
 </head>
 <body>
+    <div id="g_id_onload"
+     data-client_id="18644844173-gnpd78k83mvuju5soen3heestm3socj8.apps.googleusercontent.com"
+     data-callback="onGoogleLogin"
+     data-auto_prompt="false">
+</div>
+
+<div class="g_id_signin"
+     data-type="standard"
+     data-size="large">
+</div>
+
 
     <div id="login-screen" class="screen active">
         <h1>🔒Closed</h1>
@@ -161,4 +173,39 @@
         }
     </script>
 </body>
+    <script>
+function onGoogleLogin(response) {
+  const idToken = response.credential;
+
+  // сохраняем токен
+  localStorage.setItem("google_id_token", idToken);
+
+  const payload = JSON.parse(atob(idToken.split(".")[1]));
+
+  console.log("Logged in as:", payload);
+
+  renderUser(payload);
+}
+
+function renderUser(user) {
+  document.body.insertAdjacentHTML("beforeend", `
+    <div id="user">
+      👤 ${user.name}<br>
+      📧 ${user.email}
+    </div>
+  `);
+}
+
+// авто-восстановление сессии
+(function(){
+  const token = localStorage.getItem("google_id_token");
+  if (!token) return;
+
+  const payload = JSON.parse(atob(token.split(".")[1]));
+  if (payload.exp * 1000 < Date.now()) return;
+
+  renderUser(payload);
+})();
+</script>
+
 </html>
