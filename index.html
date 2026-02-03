@@ -111,6 +111,8 @@
             currentUser = { name: userPayload.name, email: userPayload.email, avatar: userPayload.picture };
             document.getElementById('login-screen').classList.remove('active');
             
+            window.CHAT_USER_NAME = currentUser.name;
+            
             // --- ПЕРЕДАЕМ ИМЯ В ЧАТ ---
             if (window.sendChat) {
                 // Если чат уже загружен, можно попробовать передать имя, 
