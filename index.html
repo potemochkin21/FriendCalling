@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure Call</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src='https://meet.jit.si/external_api.js'></script>
     <style>
         body { margin: 0; font-family: sans-serif; background-color: #000; color: white; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
@@ -39,35 +39,32 @@
     </style>
 </head>
 <body>
-    <div id="g_id_onload"
-     data-client_id="18644844173-gnpd78k83mvuju5soen3heestm3socj8.apps.googleusercontent.com"
-     data-callback="onGoogleLogin"
-     data-auto_prompt="false">
-</div>
-
-<div class="g_id_signin"
-     data-type="standard"
-     data-size="large">
-</div>
-
 
     <div id="login-screen" class="screen active">
-        <h1>🔒Closed</h1>
-        <p style="color:#aaa; margin-bottom: 30px;">Войдите через Telegram, чтобы попасть в комнату</p>
+        <h1>🔒 Вход</h1>
+        <p style="color:#aaa; margin-bottom: 30px;">Войдите через Google, чтобы продолжить</p>
         
-        <script async src="https://telegram.org/js/telegram-widget.js?22" 
-                data-telegram-login="FriendCalling_bot" 
-                data-size="large" 
-                data-radius="10" 
-                data-onauth="onTelegramAuth(user)" 
-                data-request-access="write"></script>
+        <div id="g_id_onload"
+             data-client_id="18644844173-gnpd78k83mvuju5soen3heestm3socj8.apps.googleusercontent.com"
+             data-callback="onGoogleLogin"
+             data-auto_prompt="false">
+        </div>
+
+        <div class="g_id_signin"
+             data-type="standard"
+             data-size="large"
+             data-theme="outline"
+             data-text="sign_in_with"
+             data-shape="pill"
+             data-logo_alignment="left">
+        </div>
     </div>
 
     <div id="lobby-screen" class="screen">
         <h1>👋 Привет, <span id="user-name">...</span></h1>
         <p>Куда звоним?</p>
         <input type="text" id="room-input" placeholder="Название комнаты" onkeypress="handleEnter(event)">
-        <button onclick="createRoom()">🚀Создать</button>
+        <button onclick="createRoom()">🚀 Создать</button>
     </div>
 
     <div id="call-screen" class="screen" style="background: black;">
@@ -81,50 +78,94 @@
     <script>
         const SERVER = 'meet.ffmuc.net';
         let currentUser = null;
-        let targetRoom = null; // Комната, куда хочет попасть человек
+        let targetRoom = null; 
 
         // --- 1. ПРОВЕРЯЕМ ССЫЛКУ ПРИ ЗАГРУЗКЕ ---
         window.onload = function() {
             const urlParams = new URLSearchParams(window.location.search);
-            const roomFromUrl = urlParams.get('room');
+            targetRoom = urlParams.get('room');
             
-            if (roomFromUrl) {
-                targetRoom = roomFromUrl;
-                console.log("Человек пришел по ссылке в комнату:", targetRoom);
+            // Проверка сохраненной сессии (если человек уже заходил)
+            checkAutoLogin();
+
+            if (targetRoom) {
+                console.log("Целевая комната:", targetRoom);
             }
         };
 
-        // --- 2. АВТОРИЗАЦИЯ (Срабатывает после нажатия кнопки ТГ) ---
-        function onTelegramAuth(user) {
-            console.log("Авторизация успешна:", user);
-            currentUser = user;
+        // --- 2. ЛОГИКА АВТОРИЗАЦИИ GOOGLE ---
+        
+        // Функция декодирования JWT (чтобы русские буквы не ломались)
+        function parseJwt (token) {
+            var base64Url = token.split('.')[1];
+            var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            return JSON.parse(jsonPayload);
+        }
+
+        // Колбэк, который вызывает Google после успешного входа
+        function onGoogleLogin(response) {
+            const idToken = response.credential;
+            localStorage.setItem("google_id_token", idToken); // Сохраняем токен
+            
+            const payload = parseJwt(idToken);
+            handleAuthSuccess(payload);
+        }
+
+        // Авто-восстановление сессии при перезагрузке страницы
+        function checkAutoLogin() {
+            const token = localStorage.getItem("google_id_token");
+            if (!token) return;
+
+            try {
+                const payload = parseJwt(token);
+                // Если токен не просрочен
+                if (payload.exp * 1000 > Date.now()) {
+                    handleAuthSuccess(payload);
+                }
+            } catch (e) {
+                console.error("Ошибка авто-входа:", e);
+                localStorage.removeItem("google_id_token");
+            }
+        }
+
+        // Общая функция успеха авторизации (переход к приложению)
+        function handleAuthSuccess(userPayload) {
+            console.log("Вход выполнен:", userPayload);
+            
+            // Формируем объект юзера. Google отдает: name, given_name, family_name, email, picture
+            currentUser = {
+                name: userPayload.name,        // Полное имя
+                email: userPayload.email,
+                avatar: userPayload.picture
+            };
 
             // Скрываем экран входа
             document.getElementById('login-screen').classList.remove('active');
 
             // ЛОГИКА РАЗВИЛКИ:
             if (targetRoom) {
-                // Если человек пришел по ссылке -> Сразу в звонок
+                // Если пришел по ссылке -> Сразу в звонок
                 startJitsi(targetRoom);
             } else {
-                // Если ссылки нет -> Даем создать комнату
-                document.getElementById('user-name').innerText = user.first_name;
+                // Если нет ссылки -> В лобби
+                document.getElementById('user-name').innerText = currentUser.name.split(' ')[0]; // Только имя
                 document.getElementById('lobby-screen').classList.add('active');
             }
         }
 
-        // --- 3. СОЗДАНИЕ КОМНАТЫ (ХОСТ) ---
+        // --- 3. СОЗДАНИЕ КОМНАТЫ ---
         function handleEnter(e) { if (e.key === "Enter") createRoom(); }
 
         function createRoom() {
             const inputVal = document.getElementById('room-input').value.trim();
             if (!inputVal) return alert("Введите название!");
 
-            // Генерируем уникальное имя, чтобы не пересекаться с чужими
-            // Но делаем его читаемым, чтобы ссылка была красивой
             const finalRoomName = 'MyCall_' + inputVal; 
 
-            // ОБНОВЛЯЕМ ССЫЛКУ В БРАУЗЕРЕ (Чтобы можно было скопировать)
+            // Обновляем URL
             const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?room=' + finalRoomName;
             window.history.pushState({path: newUrl}, '', newUrl);
 
@@ -133,11 +174,9 @@
 
         // --- 4. ЗАПУСК JITSI ---
         function startJitsi(roomName) {
-            // Убираем все экраны, показываем звонок
+            // Переключаем экраны
             document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
             document.getElementById('call-screen').classList.add('active');
-            
-            // Показываем кнопку копирования
             document.getElementById('link-bar').style.display = 'flex';
 
             const options = {
@@ -147,7 +186,8 @@
                 parentNode: document.querySelector('#meet'),
                 lang: 'ru',
                 userInfo: {
-                    displayName: currentUser.first_name + " " + (currentUser.last_name || "")
+                    displayName: currentUser.name, // Используем имя из Google
+                    email: currentUser.email       // Для Gravatar аватарок в Jitsi
                 },
                 configOverwrite: {
                     startWithAudioMuted: false,
@@ -159,7 +199,8 @@
             
             api.addEventListeners({
                 videoConferenceLeft: function () {
-                    window.location.href = window.location.pathname; // Полный выход на главную
+                    // При выходе из звонка сбрасываем URL и возвращаемся
+                    window.location.href = window.location.pathname; 
                 }
             });
         }
@@ -173,39 +214,4 @@
         }
     </script>
 </body>
-    <script>
-function onGoogleLogin(response) {
-  const idToken = response.credential;
-
-  // сохраняем токен
-  localStorage.setItem("google_id_token", idToken);
-
-  const payload = JSON.parse(atob(idToken.split(".")[1]));
-
-  console.log("Logged in as:", payload);
-
-  renderUser(payload);
-}
-
-function renderUser(user) {
-  document.body.insertAdjacentHTML("beforeend", `
-    <div id="user">
-      👤 ${user.name}<br>
-      📧 ${user.email}
-    </div>
-  `);
-}
-
-// авто-восстановление сессии
-(function(){
-  const token = localStorage.getItem("google_id_token");
-  if (!token) return;
-
-  const payload = JSON.parse(atob(token.split(".")[1]));
-  if (payload.exp * 1000 < Date.now()) return;
-
-  renderUser(payload);
-})();
-</script>
-
 </html>
