@@ -109,9 +109,22 @@
 
         function handleAuthSuccess(userPayload) {
             currentUser = { name: userPayload.name, email: userPayload.email, avatar: userPayload.picture };
+            
+            // --- ВАЖНО: ПЕРЕДАЕМ ДАННЫЕ В ЧАТ ---
+            window.CHAT_USER = {
+                id: userPayload.email,  // Уникальный ID (почта)
+                name: userPayload.name  // Имя для отображения
+            };
+            // ------------------------------------
+
             document.getElementById('login-screen').classList.remove('active');
             
-            window.CHAT_USER_NAME = currentUser.name;
+            if (targetRoom) { startJitsi(targetRoom); } 
+            else { 
+                document.getElementById('user-name').innerText = currentUser.name.split(' ')[0];
+                document.getElementById('lobby-screen').classList.add('active'); 
+            }
+        }
             
             // --- ПЕРЕДАЕМ ИМЯ В ЧАТ ---
             if (window.sendChat) {
