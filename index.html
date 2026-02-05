@@ -15,7 +15,7 @@
             display: none; 
             flex-direction: column; align-items: center; justify-content: center; 
             background: #121212; 
-            z-index: 10; /* Видеослой на уровне 10 */
+            z-index: 10; 
         }
         .active { display: flex; }
 
@@ -36,10 +36,9 @@
         }
         .copy-btn { padding: 5px 15px; font-size: 14px; background: #28a745; }
 
-        /* --- ВАЖНО: СТИЛИ ДЛЯ ЧАТА, ЧТОБЫ ОН БЫЛ ПОВЕРХ ВИДЕО --- */
-        /* Эти стили применяются к кнопке чата, которую создает скрипт */
+        /* Чат поверх видео */
         .cw-box, div[style*="position:fixed"] {
-            z-index: 99999 !important; /* Самый верхний слой */
+            z-index: 99999 !important; 
         }
     </style>
 </head>
@@ -76,12 +75,14 @@
         let currentUser = null;
         let targetRoom = null; 
 
+        // 1. При загрузке страницы проверяем, были ли мы авторизованы ранее
         window.onload = function() {
             const urlParams = new URLSearchParams(window.location.search);
             targetRoom = urlParams.get('room');
-            checkAutoLogin();
+            checkAutoLogin(); // <-- Вот это восстанавливает вход
         };
 
+        // Декодер токена
         function parseJwt (token) {
             var base64Url = token.split('.')[1];
             var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
@@ -91,50 +92,52 @@
             return JSON.parse(jsonPayload);
         }
 
+        // 2. Срабатывает при ПЕРВОМ входе через кнопку Google
         function onGoogleLogin(response) {
             const idToken = response.credential;
+            // СОХРАНЯЕМ ТОКЕН, ЧТОБЫ ЗАПОМНИТЬ ПОЛЬЗОВАТЕЛЯ
             localStorage.setItem("google_id_token", idToken);
+            
             const payload = parseJwt(idToken);
             handleAuthSuccess(payload);
         }
 
+        // 3. Срабатывает при перезагрузке страницы (авто-вход)
         function checkAutoLogin() {
             const token = localStorage.getItem("google_id_token");
-            if (!token) return;
+            if (!token) return; // Если токена нет, остаемся на экране входа
+            
             try {
                 const payload = parseJwt(token);
-                if (payload.exp * 1000 > Date.now()) handleAuthSuccess(payload);
-            } catch (e) { localStorage.removeItem("google_id_token"); }
+                // Проверяем срок действия токена
+                if (payload.exp * 1000 > Date.now()) {
+                    handleAuthSuccess(payload);
+                } else {
+                    localStorage.removeItem("google_id_token"); // Токен протух
+                }
+            } catch (e) { 
+                localStorage.removeItem("google_id_token"); 
+            }
         }
 
+        // 4. ГЛАВНАЯ ФУНКЦИЯ УСПЕШНОГО ВХОДА
         function handleAuthSuccess(userPayload) {
+            console.log("Авторизация успешна:", userPayload.name);
             currentUser = { name: userPayload.name, email: userPayload.email, avatar: userPayload.picture };
             
-            // --- ВАЖНО: ПЕРЕДАЕМ ДАННЫЕ В ЧАТ ---
+            // --- ПЕРЕДАЕМ ДАННЫЕ В ЧАТ (Фикс для бота) ---
             window.CHAT_USER = {
-                id: userPayload.email,  // Уникальный ID (почта)
-                name: userPayload.name  // Имя для отображения
+                id: userPayload.email,
+                name: userPayload.name
             };
-            // ------------------------------------
+            // ---------------------------------------------
 
+            // Убираем экран входа
             document.getElementById('login-screen').classList.remove('active');
             
-            if (targetRoom) { startJitsi(targetRoom); } 
-            else { 
-                document.getElementById('user-name').innerText = currentUser.name.split(' ')[0];
-                document.getElementById('lobby-screen').classList.add('active'); 
-            }
-        }
-            
-            // --- ПЕРЕДАЕМ ИМЯ В ЧАТ ---
-            if (window.sendChat) {
-                // Если чат уже загружен, можно попробовать передать имя, 
-                // но в простой версии KV воркера имя берется из сообщения.
-                // В этой версии просто продолжаем.
-            }
-
-            if (targetRoom) { startJitsi(targetRoom); } 
-            else { 
+            if (targetRoom) { 
+                startJitsi(targetRoom); 
+            } else { 
                 document.getElementById('user-name').innerText = currentUser.name.split(' ')[0];
                 document.getElementById('lobby-screen').classList.add('active'); 
             }
